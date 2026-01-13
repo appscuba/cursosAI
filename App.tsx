@@ -2,69 +2,171 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { generateCourse } from './services/geminiService';
 import MarkdownRenderer from './components/MarkdownRenderer';
-import { User, CourseProject, GenerationStatus, Stats } from './types';
+import { User, CourseProject, GenerationStatus, Stats, SiteConfig } from './types';
 
-// Simulated DB / Store
-const STORE_KEY = 'viral_course_architect_data';
+const STORE_KEY = 'viral_ai_pro_saas_data_v4';
+
+const DEFAULT_CONFIG: SiteConfig = {
+  heroTitle: "Crea Cursos Virales en Segundos",
+  heroSubtitle: "Diseña estructuras irresistibles, copys millonarios y planes de contenido que dominan Hotmart. No pierdas tiempo planificando, empieza a vender.",
+  accentColor: "#ea580c", 
+  features: [
+    { icon: "fa-wand-sparkles", title: "Arquitectura IA", desc: "Genera módulos, lecciones y tareas optimizadas para la retención del alumno." },
+    { icon: "fa-bullhorn", title: "Copywriting Viral", desc: "Scripts y páginas de venta con gatillos mentales de alta conversión para Hotmart." },
+    { icon: "fa-calendar-check", title: "Plan de 30 Días", desc: "No más bloqueos creativos. Recibe un plan de contenido diario para tus redes." }
+  ],
+  pricing: {
+    free: { name: "Starter", price: "Free", features: ["1 Proyecto al mes", "Nicho General", "PDF Estándar"] },
+    pro: { name: "Elite Creator", price: "$29", features: ["Ilimitado", "Marketing Viral", "Scripts", "Bonos IA"] },
+    agency: { name: "Agency Master", price: "$99", features: ["White Label", "5 Usuarios", "API Priority", "Funnels Pro"] }
+  }
+};
 
 const App: React.FC = () => {
-  // --- STATE ---
+  // --- STATE MANAGEMENT ---
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [view, setView] = useState<'login' | 'dashboard' | 'generator' | 'history' | 'admin' | 'subscription' | 'profile'>('login');
+  const [users, setUsers] = useState<User[]>([]);
   const [projects, setProjects] = useState<CourseProject[]>([]);
+  const [siteConfig, setSiteConfig] = useState<SiteConfig>(DEFAULT_CONFIG);
+  const [view, setView] = useState<'landing' | 'login' | 'register' | 'dashboard' | 'generator' | 'history' | 'admin' | 'subscription' | 'profile'>('landing');
+  const [adminSubView, setAdminSubView] = useState<'users' | 'settings'>('users');
+  
+  // Auth Form State
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+
+  // App State
   const [topic, setTopic] = useState('');
   const [status, setStatus] = useState<GenerationStatus>(GenerationStatus.IDLE);
   const [currentResult, setCurrentResult] = useState<string>('');
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPass, setLoginPass] = useState('');
-  const [authError, setAuthError] = useState('');
+  
+  // Profile State
+  const [newPassword, setNewPassword] = useState('');
+  const [profileMessage, setProfileMessage] = useState('');
 
-  // --- INITIALIZATION ---
+  // --- PERSISTENCE & INITIALIZATION ---
   useEffect(() => {
     const saved = localStorage.getItem(STORE_KEY);
     if (saved) {
       const data = JSON.parse(saved);
-      if (data.currentUser) setCurrentUser(data.currentUser);
+      if (data.users) setUsers(data.users);
       if (data.projects) setProjects(data.projects);
+      if (data.siteConfig) setSiteConfig(data.siteConfig);
+      if (data.activeUserId) {
+        const found = data.users.find((u: User) => u.id === data.activeUserId);
+        if (found) {
+          setCurrentUser(found);
+          setView('dashboard');
+        }
+      }
+    } else {
+      // Seed Admin
+      const admin: User = {
+        id: 'admin-001',
+        email: 'appscuba@gmail.com',
+        password: 'Asd9310*', 
+        role: 'admin',
+        subscription: 'agency',
+        createdAt: new Date().toISOString(),
+        status: 'active'
+      };
+      setUsers([admin]);
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORE_KEY, JSON.stringify({ currentUser, projects }));
-  }, [currentUser, projects]);
+    localStorage.setItem(STORE_KEY, JSON.stringify({ 
+      users, 
+      projects, 
+      siteConfig,
+      activeUserId: currentUser?.id || null 
+    }));
+  }, [users, projects, siteConfig, currentUser]);
 
-  // --- AUTH LOGIC ---
+  // --- ACTIONS ---
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Default Admin Check
-    if (loginEmail === 'appscuba@gmail.com' && loginPass === 'Asd9310*') {
-      const admin: User = {
-        id: 'admin-01',
-        email: 'appscuba@gmail.com',
-        role: 'admin',
-        subscription: 'agency',
-        createdAt: new Date().toISOString()
-      };
-      setCurrentUser(admin);
+    const user = users.find(u => u.email === email && u.password === password);
+    if (user) {
+      if (user.status === 'blocked') {
+        setAuthError('Tu cuenta ha sido suspendida.');
+        return;
+      }
+      setCurrentUser(user);
       setView('dashboard');
       setAuthError('');
+      resetAuthFields();
     } else {
-      setAuthError('Credenciales inválidas. Intenta con el acceso de administrador.');
+      setAuthError('Credenciales inválidas.');
     }
+  };
+
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password !== confirmPassword) {
+      setAuthError('Las contraseñas no coinciden.');
+      return;
+    }
+    if (users.find(u => u.email === email)) {
+      setAuthError('El email ya está registrado.');
+      return;
+    }
+    const newUser: User = {
+      id: Math.random().toString(36).substr(2, 9),
+      email,
+      password,
+      role: 'user',
+      subscription: 'free',
+      createdAt: new Date().toISOString(),
+      status: 'active'
+    };
+    setUsers([...users, newUser]);
+    setCurrentUser(newUser);
+    setView('dashboard');
+    resetAuthFields();
+  };
+
+  const resetAuthFields = () => {
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+    setAuthError('');
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    setView('login');
+    setView('landing');
   };
 
-  // --- GENERATOR LOGIC ---
+  const handleUpdateUser = (userId: string, updates: Partial<User>) => {
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
+    if (currentUser?.id === userId) {
+      setCurrentUser(prev => prev ? { ...prev, ...updates } : null);
+    }
+  };
+
+  const handleChangePassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword.trim()) {
+      setProfileMessage('Ingresa una contraseña válida.');
+      return;
+    }
+    if (currentUser) {
+      handleUpdateUser(currentUser.id, { password: newPassword });
+      setProfileMessage('Actualizada con éxito.');
+      setNewPassword('');
+      setTimeout(() => setProfileMessage(''), 3000);
+    }
+  };
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!topic.trim()) return;
 
-    // Subscription check
-    if (currentUser?.subscription === 'free' && projects.length >= 1) {
+    const userGens = projects.filter(p => p.userId === currentUser?.id).length;
+    if (currentUser?.subscription === 'free' && userGens >= 1) {
       setView('subscription');
       return;
     }
@@ -87,366 +189,366 @@ const App: React.FC = () => {
     }
   };
 
-  // --- STATS CALCULATION ---
-  const stats: Stats = useMemo(() => ({
-    totalGenerations: projects.length,
-    totalRevenue: projects.length * 29, // Simulated
-    activeUsers: 452,
-    conversions: 12
-  }), [projects]);
+  // --- COMPUTED DATA ---
+  const myProjects = useMemo(() => projects.filter(p => p.userId === currentUser?.id), [projects, currentUser]);
+  
+  // --- SUB-COMPONENTS ---
 
-  // --- VIEWS ---
-  if (!currentUser || view === 'login') {
+  const LandingPage = () => (
+    <div className="bg-white text-gray-900 font-sans">
+      <nav className="flex justify-between items-center px-8 py-6 max-w-7xl mx-auto">
+        <div className="flex items-center space-x-2">
+          <div style={{ backgroundColor: siteConfig.accentColor }} className="p-2 rounded-xl text-white shadow-lg">
+            <i className="fas fa-bolt-lightning"></i>
+          </div>
+          <span className="font-black text-2xl tracking-tighter">VIRAL AI</span>
+        </div>
+        <div className="hidden md:flex space-x-8 font-bold text-sm uppercase tracking-widest text-gray-500">
+          <a href="#features" className="hover:text-orange-600 transition-colors">Funciones</a>
+          <a href="#pricing" className="hover:text-orange-600 transition-colors">Precios</a>
+        </div>
+        <div className="flex space-x-4">
+          <button onClick={() => setView('login')} className="font-bold text-sm px-6 py-2 hover:text-orange-600 transition-all">Acceder</button>
+          <button onClick={() => setView('register')} className="bg-[#0f172a] text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-xl shadow-gray-200 hover:bg-orange-600 transition-all">Regístrate</button>
+        </div>
+      </nav>
+
+      <header className="px-8 py-20 text-center max-w-5xl mx-auto animate-in">
+        <h1 className="text-6xl md:text-8xl font-black tracking-tight text-[#0f172a] leading-[0.9] mb-8 whitespace-pre-line">
+          {siteConfig.heroTitle}
+        </h1>
+        <p className="text-xl text-gray-500 max-w-2xl mx-auto mb-10 leading-relaxed font-medium">
+          {siteConfig.heroSubtitle}
+        </p>
+        <div className="flex flex-col md:flex-row justify-center space-y-4 md:space-y-0 md:space-x-6">
+          <button onClick={() => setView('register')} style={{ backgroundColor: siteConfig.accentColor }} className="text-white px-10 py-5 rounded-2xl font-black text-xl shadow-2xl transition-all hover:scale-105">Empezar Gratis</button>
+          <button className="bg-white border-2 border-gray-100 px-10 py-5 rounded-2xl font-black text-xl hover:bg-gray-50 transition-all flex items-center justify-center space-x-3">
+            <i style={{ color: siteConfig.accentColor }} className="fas fa-play text-sm"></i>
+            <span>Ver Demo</span>
+          </button>
+        </div>
+      </header>
+
+      <section id="features" className="bg-[#f8fafc] py-24 px-8">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12">
+          {siteConfig.features.map((f, i) => (
+            <div key={i} className="bg-white p-10 rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all border border-gray-50 group">
+              <div style={{ backgroundColor: siteConfig.accentColor + '10' }} className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-all">
+                <i style={{ color: siteConfig.accentColor }} className={`fas ${f.icon} text-2xl`}></i>
+              </div>
+              <h3 className="text-2xl font-black mb-3 text-[#0f172a]">{f.title}</h3>
+              <p className="text-gray-500 font-medium leading-relaxed">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="pricing" className="py-24 px-8">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+           <SimplePricingCard tier={siteConfig.pricing.free.name} price={siteConfig.pricing.free.price} features={siteConfig.pricing.free.features} color={siteConfig.accentColor} />
+           <SimplePricingCard tier={siteConfig.pricing.pro.name} price={siteConfig.pricing.pro.price} featured features={siteConfig.pricing.pro.features} color={siteConfig.accentColor} />
+           <SimplePricingCard tier={siteConfig.pricing.agency.name} price={siteConfig.pricing.agency.price} features={siteConfig.pricing.agency.features} color={siteConfig.accentColor} />
+        </div>
+      </section>
+    </div>
+  );
+
+  const SimplePricingCard = ({ tier, price, features, color, featured = false }: any) => (
+    <div className={`p-10 rounded-[2.5rem] border-2 flex flex-col items-center text-center transition-all ${featured ? 'bg-white shadow-2xl scale-105 z-10' : 'border-gray-50 bg-white shadow-sm'}`} style={featured ? { borderColor: color } : {}}>
+      <h4 className="text-xl font-black text-[#0f172a] mb-2">{tier}</h4>
+      <div className="text-4xl font-black mb-8">{price}</div>
+      <ul className="space-y-4 mb-10 flex-grow">
+        {features.map((f: string, i: number) => (
+          <li key={i} className="text-sm font-bold text-gray-500 flex items-center space-x-2">
+            <i style={{ color }} className="fas fa-check text-[10px]"></i>
+            <span>{f}</span>
+          </li>
+        ))}
+      </ul>
+      <button onClick={() => setView('register')} style={featured ? { backgroundColor: color } : {}} className={`w-full py-4 rounded-xl font-black text-sm uppercase tracking-widest transition-all ${featured ? 'text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-900 hover:text-white'}`}>
+        Seleccionar
+      </button>
+    </div>
+  );
+
+  // --- RENDERING ROUTER ---
+
+  if (view === 'landing') return <LandingPage />;
+
+  if (view === 'login' || view === 'register') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-gray-100">
-          <div className="text-center mb-8">
-            <div className="bg-orange-500 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <i className="fas fa-rocket text-white text-3xl"></i>
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900">Bienvenido de nuevo</h1>
-            <p className="text-gray-500 text-sm">Ingresa a tu Viral Architect Panel</p>
-          </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1 ml-1">Email</label>
-              <input 
-                type="email" 
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1 ml-1">Contraseña</label>
-              <input 
-                type="password" 
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                value={loginPass}
-                onChange={(e) => setLoginPass(e.target.value)}
-                required
-              />
-            </div>
-            {authError && <p className="text-red-500 text-xs italic">{authError}</p>}
-            <button className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-95">
-              Iniciar Sesión
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4">
+        <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
+          <div style={{ backgroundColor: siteConfig.accentColor }} className="p-10 text-center text-white relative">
+            <button onClick={() => setView('landing')} className="absolute top-4 left-4 text-white/50 hover:text-white transition-colors">
+              <i className="fas fa-arrow-left"></i>
             </button>
-          </form>
-          <div className="mt-6 text-center">
-            <p className="text-xs text-gray-400">Admin: appscuba@gmail.com / Asd9310*</p>
+            <div className="bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-md">
+              <i className="fas fa-rocket text-3xl"></i>
+            </div>
+            <h1 className="text-2xl font-bold">{view === 'login' ? 'Bienvenido' : 'Nueva Cuenta'}</h1>
           </div>
+          <form onSubmit={view === 'login' ? handleLogin : handleRegister} className="p-8 space-y-5">
+            <input type="email" placeholder="Email" className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input type="password" placeholder="Contraseña" className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            {view === 'register' && <input type="password" placeholder="Confirmar" className="w-full px-5 py-4 bg-gray-50 border border-gray-100 rounded-2xl" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />}
+            {authError && <p className="text-red-500 text-[10px] font-bold text-center uppercase">{authError}</p>}
+            <button style={{ backgroundColor: siteConfig.accentColor }} className="w-full text-white font-black py-5 rounded-2xl shadow-xl transition-all active:scale-95 text-sm uppercase tracking-widest">
+              {view === 'login' ? 'Entrar' : 'Registrar'}
+            </button>
+            <div className="text-center">
+              <button type="button" onClick={() => setView(view === 'login' ? 'register' : 'login')} className="text-xs font-bold text-gray-400 hover:text-orange-600">
+                {view === 'login' ? 'Crear cuenta' : 'Ya tengo cuenta'}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 text-white flex flex-col no-print fixed h-full z-50">
-        <div className="p-6">
-          <div className="flex items-center space-x-3 mb-10">
-            <div className="bg-orange-500 p-2 rounded-lg"><i className="fas fa-bolt"></i></div>
-            <span className="font-extrabold text-xl tracking-tighter">VIRAL AI</span>
+    <div className="min-h-screen bg-[#f8fafc] flex">
+      <aside className="w-72 bg-[#0f172a] text-white flex flex-col no-print fixed h-full z-50">
+        <div className="p-8">
+          <div className="flex items-center space-x-3 mb-12">
+            <div style={{ backgroundColor: siteConfig.accentColor }} className="p-2.5 rounded-xl shadow-lg">
+              <i className="fas fa-bolt-lightning text-white"></i>
+            </div>
+            <span className="font-black text-2xl tracking-tighter italic">VIRAL AI</span>
           </div>
-          <nav className="space-y-1">
-            <NavItem active={view === 'dashboard'} icon="fa-th-large" label="Dashboard" onClick={() => setView('dashboard')} />
-            <NavItem active={view === 'generator'} icon="fa-magic" label="Generador" onClick={() => setView('generator')} />
-            <NavItem active={view === 'history'} icon="fa-folder-open" label="Mis Cursos" onClick={() => setView('history')} />
-            <NavItem active={view === 'subscription'} icon="fa-crown" label="Suscripción" onClick={() => setView('subscription')} />
-            {currentUser.role === 'admin' && (
-              <NavItem active={view === 'admin'} icon="fa-shield-alt" label="Administración" onClick={() => setView('admin')} />
+          <nav className="space-y-2">
+            <NavItem active={view === 'dashboard'} icon="fa-chart-pie" label="Dashboard" onClick={() => setView('dashboard')} />
+            <NavItem active={view === 'generator'} icon="fa-wand-magic-sparkles" label="Generador" onClick={() => setView('generator')} />
+            <NavItem active={view === 'history'} icon="fa-book-bookmark" label="Galería" onClick={() => setView('history')} />
+            <NavItem active={view === 'subscription'} icon="fa-gem" label="Planes" onClick={() => setView('subscription')} />
+            {currentUser?.role === 'admin' && (
+              <NavItem active={view === 'admin'} icon="fa-user-shield" label="Admin" onClick={() => setView('admin')} />
             )}
           </nav>
         </div>
-        <div className="mt-auto p-6 space-y-4 border-t border-gray-800">
-          <div className="flex items-center space-x-3 p-2 hover:bg-gray-800 rounded-xl cursor-pointer" onClick={() => setView('profile')}>
-            <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center font-bold">
-              {currentUser.email.charAt(0).toUpperCase()}
+        
+        <div className="mt-auto p-6 space-y-4">
+          <div onClick={() => setView('profile')} className="flex items-center space-x-4 p-4 bg-white/5 hover:bg-white/10 rounded-2xl cursor-pointer transition-all border border-white/5">
+            <div style={{ backgroundColor: siteConfig.accentColor }} className="w-10 h-10 rounded-full flex items-center justify-center font-black">
+              {currentUser?.email.charAt(0).toUpperCase()}
             </div>
-            <div className="overflow-hidden">
-              <p className="text-xs font-bold truncate">{currentUser.email}</p>
-              <p className="text-[10px] text-orange-400 uppercase font-bold tracking-widest">{currentUser.subscription}</p>
-            </div>
+            <p className="text-sm font-bold truncate flex-1">{currentUser?.email}</p>
           </div>
-          <button onClick={handleLogout} className="w-full flex items-center space-x-2 text-gray-500 hover:text-white text-sm transition-colors pl-2">
-            <i className="fas fa-sign-out-alt"></i>
-            <span>Cerrar Sesión</span>
+          <button onClick={handleLogout} className="w-full text-gray-500 hover:text-red-400 py-2 text-xs font-black uppercase tracking-widest transition-all">
+            <i className="fas fa-power-off mr-2"></i>Cerrar Sesión
           </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-grow ml-64 p-8">
-        
-        {/* VIEW: DASHBOARD */}
+      <main className="flex-grow ml-72 p-10 max-w-7xl mx-auto w-full">
         {view === 'dashboard' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h1 className="text-3xl font-bold text-gray-900 mb-8">Bienvenido, {currentUser.email.split('@')[0]}</h1>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
-              <StatCard label="Cursos Generados" value={stats.totalGenerations} icon="fa-rocket" color="bg-blue-500" />
-              <StatCard label="Plan Actual" value={currentUser.subscription.toUpperCase()} icon="fa-crown" color="bg-orange-500" />
-              <StatCard label="Puntos Disponibles" value="ILIMITADO" icon="fa-coins" color="bg-yellow-500" />
-              <StatCard label="Usuarios Activos" value={stats.activeUsers} icon="fa-users" color="bg-green-500" />
-            </div>
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-              <h2 className="text-xl font-bold mb-4">Actividad Reciente</h2>
-              {projects.length === 0 ? (
-                <div className="text-center py-20 text-gray-400">
-                  <i className="fas fa-ghost text-4xl mb-4 opacity-20"></i>
-                  <p>Aún no has generado ningún curso viral.</p>
-                  <button onClick={() => setView('generator')} className="mt-4 text-orange-600 font-bold hover:underline">Empieza ahora</button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {projects.slice(0, 3).map(p => (
-                    <div key={p.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => { setCurrentResult(p.content); setView('history'); }}>
-                      <div className="flex items-center space-x-4">
-                        <div className="bg-white p-3 rounded-xl shadow-sm"><i className="fas fa-file-alt text-orange-500"></i></div>
-                        <div>
-                          <p className="font-bold text-gray-900">{p.topic}</p>
-                          <p className="text-xs text-gray-400">{new Date(p.timestamp).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-                      <i className="fas fa-chevron-right text-gray-300"></i>
-                    </div>
-                  ))}
-                </div>
-              )}
+          <div className="animate-in fade-in slide-in-from-bottom-5 duration-700">
+             <h1 className="text-4xl font-black text-[#0f172a] tracking-tight mb-10">¡Hola, {currentUser?.email.split('@')[0]}!</h1>
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+              <StatCard label="Mis Cursos" value={myProjects.length} icon="fa-layer-group" color="bg-blue-600" />
+              <StatCard label="Plan Actual" value={currentUser?.subscription.toUpperCase()} icon="fa-crown" color="bg-orange-600" />
+              <StatCard label="Estatus" value={currentUser?.status.toUpperCase()} icon="fa-check-circle" color="bg-green-600" />
             </div>
           </div>
         )}
 
-        {/* VIEW: GENERATOR */}
         {view === 'generator' && (
-          <div className="max-w-4xl mx-auto animate-in zoom-in-95 duration-500">
-            <div className="text-center mb-10">
-              <h1 className="text-4xl font-extrabold text-gray-900 mb-2">Arquitecto de <span className="text-orange-600">Viralidad</span></h1>
-              <p className="text-gray-500">Diseña el curso que romperá Hotmart este 2024</p>
-            </div>
-            
-            <form onSubmit={handleGenerate} className="bg-white p-10 rounded-3xl shadow-xl border border-gray-100 mb-10">
-              <div className="mb-6">
-                <label className="block text-sm font-bold text-gray-700 mb-3">¿De qué trata tu curso?</label>
-                <textarea 
-                  className="w-full p-5 bg-gray-50 border border-gray-200 rounded-2xl h-32 focus:ring-4 focus:ring-orange-100 focus:border-orange-500 transition-all outline-none text-lg"
-                  placeholder="Ej: Inversiones en bienes raíces para nómadas digitales con bajo presupuesto..."
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  disabled={status === GenerationStatus.LOADING}
-                />
-              </div>
-              <button 
-                type="submit"
-                disabled={status === GenerationStatus.LOADING}
-                className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black py-5 rounded-2xl shadow-xl shadow-orange-200 transition-all active:scale-95 disabled:bg-gray-400 flex items-center justify-center space-x-3 text-xl"
-              >
-                {status === GenerationStatus.LOADING ? (
-                  <>
-                    <i className="fas fa-circle-notch animate-spin"></i>
-                    <span>Cocinando Viralidad...</span>
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-wand-magic-sparkles"></i>
-                    <span>Generar Oferta Irresistible</span>
-                  </>
-                )}
+          <div className="max-w-4xl mx-auto animate-in zoom-in-95 duration-700">
+            <h1 className="text-4xl font-black text-center mb-10 text-[#0f172a]">Arquitecto de <span style={{ color: siteConfig.accentColor }}>Viralidad</span></h1>
+            <form onSubmit={handleGenerate} className="bg-white p-12 rounded-[3rem] shadow-2xl border border-gray-100 mb-12">
+              <textarea className="w-full p-8 bg-gray-50 border border-gray-100 rounded-[2rem] h-44 outline-none text-xl font-bold mb-8" placeholder="Tu nicho..." value={topic} onChange={(e) => setTopic(e.target.value)} disabled={status === GenerationStatus.LOADING} required />
+              <button type="submit" disabled={status === GenerationStatus.LOADING} style={{ backgroundColor: siteConfig.accentColor }} className="w-full text-white font-black py-6 rounded-2xl shadow-2xl transition-all active:scale-95 disabled:bg-gray-400 text-xl">
+                {status === GenerationStatus.LOADING ? 'Generando...' : 'Generar Oferta'}
               </button>
             </form>
+            {status === GenerationStatus.SUCCESS && currentResult && <MarkdownRenderer content={currentResult} />}
+          </div>
+        )}
 
-            {status === GenerationStatus.SUCCESS && currentResult && (
-              <div className="mt-10">
-                <div className="flex justify-between items-center mb-6">
-                   <h2 className="text-2xl font-bold">Estructura Viral Generada</h2>
-                   <button onClick={() => window.print()} className="bg-gray-900 text-white px-6 py-2 rounded-full text-sm font-bold"><i className="fas fa-file-pdf mr-2"></i>Exportar PDF</button>
+        {view === 'admin' && currentUser?.role === 'admin' && (
+          <div className="animate-in fade-in duration-700 space-y-12">
+            <div className="flex space-x-4 border-b border-gray-100 pb-4">
+              <button onClick={() => setAdminSubView('users')} className={`px-6 py-2 font-black text-xs uppercase tracking-widest rounded-xl transition-all ${adminSubView === 'users' ? 'bg-[#0f172a] text-white' : 'text-gray-400'}`}>Usuarios</button>
+              <button onClick={() => setAdminSubView('settings')} className={`px-6 py-2 font-black text-xs uppercase tracking-widest rounded-xl transition-all ${adminSubView === 'settings' ? 'bg-[#0f172a] text-white' : 'text-gray-400'}`}>Sitio Web</button>
+            </div>
+
+            {adminSubView === 'users' ? (
+              <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm overflow-hidden">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-gray-400 text-[10px] font-black uppercase tracking-widest border-b border-gray-50">
+                      <th className="pb-6">Email</th>
+                      <th className="pb-6">Plan</th>
+                      <th className="pb-6">Rol</th>
+                      <th className="pb-6">Estatus</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-sm">
+                    {users.map(u => (
+                      <tr key={u.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                        <td className="py-6 font-bold">{u.email}</td>
+                        <td className="py-6">
+                          <select value={u.subscription} onChange={(e) => handleUpdateUser(u.id, { subscription: e.target.value as any })} className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">
+                            <option value="free">Free</option>
+                            <option value="pro">Pro</option>
+                            <option value="agency">Agency</option>
+                          </select>
+                        </td>
+                        <td className="py-6">
+                          <select value={u.role} onChange={(e) => handleUpdateUser(u.id, { role: e.target.value as any })} className="bg-gray-100 px-3 py-1 rounded-full text-[10px] font-bold">
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        </td>
+                        <td className="py-6">
+                          <button onClick={() => handleUpdateUser(u.id, { status: u.status === 'active' ? 'blocked' : 'active' })} className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${u.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                            {u.status}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-8 animate-in">
+                <h2 className="text-2xl font-black">Personalización del Sitio</h2>
+                
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-black text-gray-400 uppercase mb-2">Color de Acento</label>
+                    <input type="color" value={siteConfig.accentColor} onChange={(e) => setSiteConfig({...siteConfig, accentColor: e.target.value})} className="h-10 w-20 cursor-pointer" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-400 uppercase mb-2">Título Hero</label>
+                    <input type="text" value={siteConfig.heroTitle} onChange={(e) => setSiteConfig({...siteConfig, heroTitle: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-gray-400 uppercase mb-2">Subtítulo Hero</label>
+                    <textarea value={siteConfig.heroSubtitle} onChange={(e) => setSiteConfig({...siteConfig, heroSubtitle: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-100 rounded-xl h-24" />
+                  </div>
+
+                  <div className="pt-6">
+                    <h3 className="text-lg font-bold mb-4">Configuración de Planes</h3>
+                    <div className="grid grid-cols-3 gap-6">
+                      {['free', 'pro', 'agency'].map((key) => (
+                        <div key={key} className="space-y-4 p-4 border rounded-2xl">
+                          <p className="font-bold uppercase text-xs">{key}</p>
+                          <input 
+                            type="text" 
+                            placeholder="Nombre"
+                            value={(siteConfig.pricing as any)[key].name} 
+                            onChange={(e) => setSiteConfig({
+                              ...siteConfig, 
+                              pricing: {
+                                ...siteConfig.pricing,
+                                [key]: { ...(siteConfig.pricing as any)[key], name: e.target.value }
+                              }
+                            })} 
+                            className="w-full p-2 text-sm border rounded"
+                          />
+                          <input 
+                            type="text" 
+                            placeholder="Precio"
+                            value={(siteConfig.pricing as any)[key].price} 
+                            onChange={(e) => setSiteConfig({
+                              ...siteConfig, 
+                              pricing: {
+                                ...siteConfig.pricing,
+                                [key]: { ...(siteConfig.pricing as any)[key], price: e.target.value }
+                              }
+                            })} 
+                            className="w-full p-2 text-sm border rounded"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={() => alert('Cambios guardados localmente')} style={{ backgroundColor: siteConfig.accentColor }} className="text-white px-8 py-3 rounded-xl font-bold">
+                    Guardar Configuración
+                  </button>
                 </div>
-                <MarkdownRenderer content={currentResult} />
               </div>
             )}
           </div>
         )}
 
-        {/* VIEW: ADMIN */}
-        {view === 'admin' && currentUser.role === 'admin' && (
-          <div className="space-y-10 animate-in fade-in duration-500">
-            <h1 className="text-3xl font-bold">Admin Management</h1>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-               <AdminStatCard label="Ingresos Totales" value={`$${stats.totalRevenue}`} color="text-green-600" />
-               <AdminStatCard label="Nuevos Usuarios" value="84" color="text-blue-600" />
-               <AdminStatCard label="Conversión" value="4.2%" color="text-purple-600" />
-               <AdminStatCard label="IA Uptime" value="99.9%" color="text-orange-600" />
-            </div>
-            
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
-              <div className="flex justify-between items-center mb-8">
-                <h2 className="text-xl font-bold">Gráfico de Crecimiento</h2>
-                <select className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1 text-sm outline-none">
-                  <option>Últimos 30 días</option>
-                  <option>Últimos 7 días</option>
-                </select>
-              </div>
-              <div className="h-64 w-full flex items-end justify-between space-x-2 px-4">
-                {[40, 60, 45, 90, 100, 80, 50, 70, 85, 95, 110, 130].map((h, i) => (
-                  <div key={i} className="flex-1 bg-orange-500 rounded-t-lg transition-all hover:bg-orange-600 relative group" style={{ height: `${h}%` }}>
-                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">+{h} sales</div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex justify-between mt-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2">
-                <span>Ene</span><span>Feb</span><span>Mar</span><span>Abr</span><span>May</span><span>Jun</span><span>Jul</span><span>Ago</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dic</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* VIEW: SUBSCRIPTION */}
-        {view === 'subscription' && (
-          <div className="max-w-5xl mx-auto py-10 animate-in fade-in duration-500">
-            <div className="text-center mb-16">
-              <h2 className="text-4xl font-black text-gray-900 mb-4">Escala tu Negocio Digital</h2>
-              <p className="text-gray-500 text-lg">Elige el plan que mejor se adapte a tu ambición.</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <PricingCard 
-                name="Starter" 
-                price="Gratis" 
-                features={['1 Generación al mes', 'Soporte Básico', 'Exportación PDF']} 
-                buttonText="Plan Actual" 
-                active={currentUser.subscription === 'free'}
-              />
-              <PricingCard 
-                name="Pro Creator" 
-                price="$29" 
-                featured 
-                features={['Generaciones Ilimitadas', 'Nicho Ultra-Específico', 'Scripts de Reels Virales', 'Bonos Personalizados']} 
-                buttonText="Elegir Pro"
-                active={currentUser.subscription === 'pro'}
-              />
-              <PricingCard 
-                name="Digital Agency" 
-                price="$99" 
-                features={['Marca Blanca', 'Múltiples Usuarios', 'API Access', 'Consultoría Estratégica']} 
-                buttonText="Elegir Agency"
-                active={currentUser.subscription === 'agency'}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* VIEW: HISTORY */}
         {view === 'history' && (
-          <div className="animate-in fade-in duration-500">
-            <h1 className="text-3xl font-bold mb-8">Mis Proyectos</h1>
-            <div className="grid grid-cols-1 gap-6">
-              {projects.length === 0 ? (
-                 <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-200">
-                   <p className="text-gray-400">No hay proyectos guardados.</p>
-                 </div>
-              ) : (
-                projects.map(p => (
-                  <details key={p.id} className="group bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                    <summary className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 list-none">
-                      <div className="flex items-center space-x-4">
-                        <div className="bg-orange-100 text-orange-600 p-3 rounded-xl"><i className="fas fa-file-invoice"></i></div>
-                        <div>
-                          <p className="font-bold text-gray-900">{p.topic}</p>
-                          <p className="text-xs text-gray-400">{new Date(p.timestamp).toLocaleString()}</p>
-                        </div>
-                      </div>
-                      <i className="fas fa-chevron-down text-gray-300 group-open:rotate-180 transition-transform"></i>
-                    </summary>
-                    <div className="p-8 border-t border-gray-50">
-                      <MarkdownRenderer content={p.content} />
-                    </div>
-                  </details>
-                ))
-              )}
-            </div>
+          <div className="animate-in fade-in duration-700">
+             <h1 className="text-4xl font-black text-[#0f172a] tracking-tight mb-10">Mi Galería</h1>
+             {myProjects.length === 0 ? (
+               <p className="text-gray-400 font-bold">Sin proyectos.</p>
+             ) : (
+               <div className="space-y-8">
+                 {myProjects.map(p => (
+                   <div key={p.id} className="bg-white rounded-3xl p-10 shadow-sm border border-gray-100">
+                     <h2 className="text-2xl font-black mb-6">{p.topic}</h2>
+                     <MarkdownRenderer content={p.content} />
+                   </div>
+                 ))}
+               </div>
+             )}
           </div>
         )}
 
-        {/* VIEW: PROFILE */}
+        {view === 'subscription' && (
+          <div className="animate-in fade-in duration-700">
+             <h2 className="text-3xl font-black text-center mb-10">Mejora tu cuenta</h2>
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <SimplePricingCard tier={siteConfig.pricing.free.name} price={siteConfig.pricing.free.price} features={siteConfig.pricing.free.features} color={siteConfig.accentColor} />
+                <SimplePricingCard tier={siteConfig.pricing.pro.name} price={siteConfig.pricing.pro.price} featured features={siteConfig.pricing.pro.features} color={siteConfig.accentColor} />
+                <SimplePricingCard tier={siteConfig.pricing.agency.name} price={siteConfig.pricing.agency.price} features={siteConfig.pricing.agency.features} color={siteConfig.accentColor} />
+             </div>
+          </div>
+        )}
+
         {view === 'profile' && (
-          <div className="max-w-2xl mx-auto animate-in fade-in duration-500">
-            <h1 className="text-3xl font-bold mb-8">Configuración de Perfil</h1>
-            <div className="bg-white rounded-3xl p-10 shadow-sm border border-gray-100 space-y-8">
-              <div className="flex items-center space-x-6">
-                <div className="w-24 h-24 bg-orange-500 rounded-3xl flex items-center justify-center text-white text-4xl font-black">
-                  {currentUser.email.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold">{currentUser.email}</h3>
-                  <p className="text-gray-500">Miembro desde {new Date(currentUser.createdAt).toLocaleDateString()}</p>
-                </div>
-              </div>
-              <hr className="border-gray-50" />
-              <div className="space-y-4">
-                <h4 className="font-bold text-gray-700">Cambiar Contraseña</h4>
-                <input type="password" placeholder="Contraseña Actual" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl" />
-                <input type="password" placeholder="Nueva Contraseña" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl" />
-                <button className="bg-gray-900 text-white font-bold px-8 py-3 rounded-xl hover:bg-gray-800 transition-colors">Guardar Cambios</button>
-              </div>
+          <div className="max-w-2xl mx-auto animate-in fade-in duration-700">
+            <h1 className="text-3xl font-black mb-8">Perfil</h1>
+            <div className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-sm space-y-8">
+               <div className="flex items-center space-x-6">
+                 <div style={{ backgroundColor: siteConfig.accentColor }} className="w-20 h-20 rounded-[1.5rem] flex items-center justify-center text-white text-3xl font-black">
+                   {currentUser?.email.charAt(0).toUpperCase()}
+                 </div>
+                 <div>
+                   <h3 className="text-xl font-bold">{currentUser?.email}</h3>
+                   <span style={{ color: siteConfig.accentColor, backgroundColor: siteConfig.accentColor + '10' }} className="text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest">{currentUser?.subscription}</span>
+                 </div>
+               </div>
+               <hr />
+               <form onSubmit={handleChangePassword} className="space-y-4">
+                 <h4 className="font-bold text-sm uppercase tracking-widest text-gray-400">Seguridad</h4>
+                 <input type="password" placeholder="Nueva Contraseña" className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                 {profileMessage && <p className="text-xs font-bold text-green-500">{profileMessage}</p>}
+                 <button style={{ backgroundColor: siteConfig.accentColor }} className="bg-[#0f172a] text-white px-8 py-4 rounded-xl font-bold">Guardar</button>
+               </form>
             </div>
           </div>
         )}
-
       </main>
     </div>
   );
 };
 
-// --- HELPER COMPONENTS ---
+// --- HELPERS ---
 
 const NavItem = ({ active, icon, label, onClick }: { active: boolean, icon: string, label: string, onClick: () => void }) => (
-  <button 
-    onClick={onClick}
-    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/30' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-  >
-    <i className={`fas ${icon} w-5`}></i>
-    <span className="font-medium text-sm">{label}</span>
+  <button onClick={onClick} className={`w-full flex items-center space-x-4 px-6 py-4 rounded-2xl transition-all group ${active ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+    <i className={`fas ${icon} w-5 text-sm`}></i>
+    <span className="font-bold text-sm">{label}</span>
   </button>
 );
 
-const StatCard = ({ label, value, icon, color }: { label: string, value: string | number, icon: string, color: string }) => (
-  <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center space-x-4">
-    <div className={`${color} p-4 rounded-2xl text-white shadow-lg`}><i className={`fas ${icon} text-xl`}></i></div>
+const StatCard = ({ label, value, icon, color }: any) => (
+  <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm flex items-center space-x-6">
+    <div className={`${color} w-16 h-16 rounded-[1.2rem] text-white shadow-lg flex items-center justify-center`}>
+      <i className={`fas ${icon} text-2xl`}></i>
+    </div>
     <div>
-      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</p>
-      <p className="text-xl font-black text-gray-900">{value}</p>
+      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{label}</p>
+      <p className="text-3xl font-black text-[#0f172a] tracking-tighter">{value}</p>
     </div>
-  </div>
-);
-
-const AdminStatCard = ({ label, value, color }: { label: string, value: string, color: string }) => (
-  <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-    <p className="text-xs font-bold text-gray-400 uppercase mb-1">{label}</p>
-    <p className={`text-2xl font-black ${color}`}>{value}</p>
-  </div>
-);
-
-const PricingCard = ({ name, price, features, buttonText, featured = false, active = false }: any) => (
-  <div className={`p-8 rounded-3xl border ${featured ? 'border-orange-500 bg-white ring-4 ring-orange-50' : 'border-gray-100 bg-white'} relative flex flex-col h-full`}>
-    {featured && <span className="absolute -top-4 left-1/2 -translate-x-1/2 bg-orange-600 text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">Recomendado</span>}
-    <div className="mb-8">
-      <h3 className="text-xl font-black mb-2">{name}</h3>
-      <div className="flex items-baseline space-x-1">
-        <span className="text-4xl font-black">{price}</span>
-        {price !== 'Gratis' && <span className="text-gray-400 text-sm">/mes</span>}
-      </div>
-    </div>
-    <ul className="space-y-4 mb-10 flex-grow">
-      {features.map((f: string, i: number) => (
-        <li key={i} className="flex items-center space-x-3 text-sm text-gray-600">
-          <i className="fas fa-check-circle text-orange-500"></i>
-          <span>{f}</span>
-        </li>
-      ))}
-    </ul>
-    <button className={`w-full py-4 rounded-2xl font-bold transition-all ${active ? 'bg-gray-100 text-gray-400 cursor-default' : (featured ? 'bg-orange-600 text-white hover:bg-orange-700 shadow-xl shadow-orange-200' : 'bg-gray-900 text-white hover:bg-gray-800')}`}>
-      {active ? 'Activo' : buttonText}
-    </button>
   </div>
 );
 
