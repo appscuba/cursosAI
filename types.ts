@@ -1,28 +1,19 @@
 
-export interface CourseData {
-  niche: string;
-  marketAnalysis: string;
-  avatar: string;
-  promise: string;
-  titles: string[];
-  structure: Module[];
-  scripts: string;
-  salesCopy: string;
-  bonuses: string[];
-  launchStrategy: string;
-  contentPlan: string[];
-  pricing: string;
+export interface User {
+  id: string;
+  email: string;
+  password?: string;
+  role: 'admin' | 'user';
+  subscription: 'free' | 'pro' | 'agency';
+  createdAt: string;
 }
 
-export interface Module {
-  title: string;
-  lessons: Lesson[];
-}
-
-export interface Lesson {
-  title: string;
-  objective: string;
-  tasks: string;
+export interface CourseProject {
+  id: string;
+  userId: string;
+  topic: string;
+  content: string;
+  timestamp: number;
 }
 
 export enum GenerationStatus {
@@ -30,4 +21,11 @@ export enum GenerationStatus {
   LOADING = 'LOADING',
   SUCCESS = 'SUCCESS',
   ERROR = 'ERROR'
+}
+
+export interface Stats {
+  totalGenerations: number;
+  totalRevenue: number;
+  activeUsers: number;
+  conversions: number;
 }
